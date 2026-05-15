@@ -1,28 +1,34 @@
 # Langfuse Firewall Replay
 
-Replay Langfuse `observations_v2` exports through the Silmaril Firewall Python SDK.
+Replay Langfuse `observations_v2` exports through Silmaril Firewall to understand
+how historical traces would classify before changing production behavior.
 
-This tool is built for offline analysis of Langfuse Blob Storage exports. It reads
-enriched observation rows, maps LLM and tool surfaces to Silmaril hook labels, calls
-`Firewall.classify(...)` one item at a time, and writes local JSON reports.
+The tool reads a local Langfuse export, extracts user inputs, model outputs, tool
+calls, and tool responses, then calls `Firewall.classify(...)` once per extracted
+item. It writes local JSON reports for trace analysis.
 
-It is useful when you want to answer questions like:
+It does not write scores back to Langfuse.
 
-- Which historical traces would Silmaril have blocked?
-- Which hooks or tools create the highest-risk replay items?
-- Which traces should be reviewed before enabling enforcement?
+## Requirements
 
-The replay runner is read-only with respect to Langfuse and Silmaril application
-state. It does not write scores back to Langfuse and does not import findings into
-any downstream system.
+- Python 3.10 or newer
+- A Langfuse `observations_v2` export
+- A Silmaril API key
+- A Silmaril `/classify` endpoint URL
+- Optional: `jq` for the report inspection commands below
 
-## License
+Install from GitHub:
 
-This repository uses the same source-available license style as the Silmaril SDKs.
-See [LICENSE](LICENSE). The repository can be public, but the license is not an
-OSI open source license.
+```bash
+python -m venv .venv
+source .venv/bin/activate
 
-## Quick Start
+pip install "git+https://github.com/Silmaril-Security/langfuse-firewall-replay.git@main"
+```
+
+This installs the replay CLI and its Silmaril Python SDK dependency.
+
+For local development from a checkout:
 
 ```bash
 git clone https://github.com/Silmaril-Security/langfuse-firewall-replay.git
@@ -31,155 +37,192 @@ cd langfuse-firewall-replay
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-
-export SILMARIL_API_KEY="..."
-export SILMARIL_API_URL="https://<api-id>.execute-api.<region>.amazonaws.com/<stage>/classify"
-
-langfuse-firewall-replay \
-  --input /path/to/langfuse-export/observations_v2 \
-  --out runs/replay
 ```
 
-For parser validation without API calls:
+## Input
 
-```bash
-langfuse-firewall-replay --input /path/to/observations_v2 --dry-run
-```
+Use a Langfuse Blob Storage export for `observations_v2`, also called enriched
+observations.
 
-## Install
-
-Install from GitHub:
-
-```bash
-pip install "git+https://github.com/Silmaril-Security/langfuse-firewall-replay.git@main"
-```
-
-If the package has been published to your package index, install it with:
-
-```bash
-pip install langfuse-firewall-replay silmaril-security-sdk
-```
-
-For local development from a checkout:
-
-```bash
-pip install -e ".[dev]"
-```
-
-If you are developing against a local Silmaril SDK checkout instead of the
-published package, install that SDK in the same virtual environment.
-
-## Supported Input
-
-The primary input is Langfuse Blob Storage `observations_v2`, also called
-enriched observations. Supported file types:
+Supported files:
 
 - `.jsonl`
-- `.json`
 - `.jsonl.gz`
+- `.json`
 - `.json.gz`
 
-JSONL is preferred for large exports. `.json` and `.json.gz` files are parsed as
-single JSON documents and are capped to avoid accidental huge loads.
+Point `--input` at either a single file or the exported `observations_v2`
+directory:
 
-`--input` may point to one file or a directory. If the directory contains an
-`observations_v2` subtree, only files from that subtree are replayed. This avoids
-accidentally processing `scores`, legacy `traces`, or legacy `observations` files
-from the same export root.
-
-## Configuration
-
-The CLI defaults are generic metadata values:
-
-```text
---tenant default
---stage prod
---region us-west-2
+```bash
+langfuse-firewall-replay --input ./langfuse-export/observations_v2 --dry-run
 ```
 
-These values are written to `summary.json` and are also used to derive an optional
-tenant-specific API URL environment variable.
+JSONL is preferred for large exports. Single-document `.json` files are capped to
+avoid accidental huge loads. CSV is not supported.
 
-API URL resolution order:
+## Configure Silmaril
+
+Set the API key and classify endpoint:
+
+```bash
+export SILMARIL_API_KEY="..."
+export SILMARIL_API_URL="https://<api-id>.execute-api.<region>.amazonaws.com/<stage>/classify"
+```
+
+The API URL can also be tenant-specific:
+
+```bash
+export SILMARIL_ACME_PROD_API_URL="https://<api-id>.execute-api.us-west-2.amazonaws.com/prod/classify"
+```
+
+Resolution order:
 
 1. `--api-url`
 2. `SILMARIL_<TENANT>_<STAGE>_API_URL`
 3. `SILMARIL_API_URL`
 
-For example:
+## Run A Replay
+
+First validate extraction without API calls:
 
 ```bash
-export SILMARIL_ACME_PROD_API_URL="https://<api-id>.execute-api.us-west-2.amazonaws.com/prod/classify"
-
 langfuse-firewall-replay \
+  --input ./langfuse-export/observations_v2 \
+  --out runs/dry-run \
+  --dry-run \
+  --include-preview
+```
+
+Then run a live replay:
+
+```bash
+langfuse-firewall-replay \
+  --input ./langfuse-export/observations_v2 \
+  --out runs/replay \
   --tenant acme \
   --stage prod \
-  --input ./exports/observations_v2
+  --region us-west-2 \
+  --workers 4 \
+  --include-preview
 ```
 
-`SILMARIL_API_KEY` is required for live replay. `--dry-run` does not require
-credentials.
-
-Useful options:
-
-```text
---workers N       Classify items concurrently, still one classify(...) call per item.
---limit N         Replay only the first N extracted items.
---include-text    Include full input text in results.jsonl.
---include-preview Include short text previews in results.jsonl.
---plain-identifiers
-                  Write raw trace, observation, session, and user identifiers.
---hash-salt VALUE Use a deterministic salt for hashed text and identifiers.
---include-error-details
-                  Write raw exception messages.
---include-source-paths
-                  Write input file paths to report artifacts.
---dry-run         Extract and report without calling the firewall.
-```
-
-## Hook Mapping
-
-| Langfuse surface | Silmaril hook |
-| --- | --- |
-| Last user/human message in generation input | `user_input` |
-| Plain generation input | `user_input` |
-| Tool/function messages in generation input | `tool_response` |
-| Generation output | `llm_output` |
-| `tool_calls` payloads/arguments | `tool_call` |
-| Tool/retriever span input | `tool_call` |
-| Tool/retriever span output | `tool_response` |
-| System messages | skipped and counted |
-
-The replay runner intentionally never calls `classify_batch`. Each extracted item
-is sent in shadow mode via:
+The runner intentionally never calls `classify_batch`. Each replay item is sent
+through the Python SDK as:
 
 ```python
 fw.classify(text, hook=hook, tool_name=tool_name, shadow_mode=True)
 ```
 
-That keeps SDK sanitization, retry behavior, and long-input chunking in one place.
-Shadow mode ensures malicious replay items are recorded as `MALICIOUS` results
-instead of raising block exceptions.
+## What Gets Classified
+
+| Langfuse surface | Silmaril hook |
+| --- | --- |
+| Last user/human message in generation input | `user_input` |
+| Plain generation input | `user_input` |
+| Generation output | `llm_output` |
+| Tool/function messages in generation input | `tool_response` |
+| `tool_calls` arguments or payloads | `tool_call` |
+| Tool/retriever span input | `tool_call` |
+| Tool/retriever span output | `tool_response` |
+| System messages | skipped and counted |
 
 ## Output Files
 
-Each run writes three local artifacts:
+Each run writes three files under `--out`.
 
-- `results.jsonl`: one row per replay item with trace/observation ids, hook, tool
-  name, source field, prediction, score, optional outcome fields, error details,
-  salted text hash, length, and optional preview.
-- `trace_summary.jsonl`: one row per trace with max score, malicious count, errors,
-  hooks/tools seen, and top triggering item.
-- `summary.json`: run config, observation counts, replay counts, skip counts,
-  prediction totals, hook totals, errors, and score aggregates.
+### `results.jsonl`
 
-Full text and text previews are omitted by default. `--include-preview` adds a
-short preview, and `--include-text` writes the full replay text.
+One row per classified replay item. Useful fields:
 
-Text and identifiers are hashed by default with a random per-run salt. Use
-`--hash-salt` for stable hashes across runs, or `--plain-identifiers` for raw
-identifiers. The configured `/classify` URL is not written to `summary.json`;
-only the source of the setting is recorded.
+- `trace_id`
+- `observation_id`
+- `hook`
+- `tool_name`
+- `source_field`
+- `prediction`
+- `score`
+- `blocked`
+- `error_class`
+- `text_hash`
+- `text_length`
+- `text_preview`, when `--include-preview` is set
+- `text`, when `--include-text` is set
+
+Show triggering items:
+
+```bash
+jq -r '
+  select(.prediction == "MALICIOUS") |
+  [.trace_id, .observation_id, .hook, (.tool_name // "-"), .score, (.text_preview // "")]
+  | @tsv
+' runs/replay/results.jsonl
+```
+
+### `trace_summary.jsonl`
+
+One row per trace. Useful fields:
+
+- `trace_id`
+- `trace_name`
+- `item_count`
+- `malicious_count`
+- `error_count`
+- `max_score`
+- `top_hook`
+- `top_tool_name`
+- `hooks`
+- `tools`
+
+Rank traces by highest score:
+
+```bash
+jq -s -r '
+  sort_by(.max_score // 0) | reverse |
+  .[] |
+  [.trace_id, (.trace_name // "-"), .malicious_count, .max_score]
+  | @tsv
+' runs/replay/trace_summary.jsonl
+```
+
+### `summary.json`
+
+Run-level counts and aggregate statistics:
+
+- observations processed
+- replay items classified
+- traces seen
+- predictions by label
+- hooks seen
+- skipped system messages
+- errors by class
+- max and mean score
+
+Inspect the run summary:
+
+```bash
+jq . runs/replay/summary.json
+```
+
+## Common Options
+
+```text
+--input PATH              Langfuse export file or directory.
+--out PATH                Output directory. Defaults to runs/<timestamp>.
+--tenant NAME             Tenant label written to summary.json. Default: default.
+--stage NAME              Stage label written to summary.json. Default: prod.
+--region NAME             Region label written to summary.json. Default: us-west-2.
+--api-url URL             Silmaril classify endpoint.
+--workers N              Number of concurrent classify calls. Default: 1.
+--limit N                Stop after N extracted replay items.
+--dry-run                Parse and write reports without API calls.
+--include-preview        Write a short text preview for each item.
+--include-text           Write full replay text for each item.
+--plain-identifiers      Write raw trace, observation, session, and user ids.
+--hash-salt VALUE        Use stable hashes across runs.
+--include-error-details  Write raw exception messages.
+--include-source-paths   Write input file paths to report artifacts.
+```
 
 ## Development
 
@@ -188,6 +231,3 @@ pytest -q
 ruff check src tests
 python -m build
 ```
-
-The tests include a guard fake client where `classify_batch` raises if it is ever
-called.
