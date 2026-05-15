@@ -1,0 +1,67 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "langfuse-firewall-replay"
+version = "0.1.0"
+description = "Replay Langfuse observations_v2 exports through the Silmaril Firewall Python SDK"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    { name = "Silmaril Security Inc", email = "engineering@silmarilsecurity.com" }
+]
+license = { file = "LICENSE" }
+dependencies = [
+    "silmaril-security-sdk>=0.3.1",
+]
+keywords = [
+    "silmaril",
+    "firewall",
+    "langfuse",
+    "observability",
+    "prompt-injection",
+    "jailbreak",
+    "llm-security",
+    "ai-security",
+]
+
+[project.optional-dependencies]
+dev = [
+    "build>=1.2.0",
+    "pytest>=7.4.0",
+    "ruff>=0.1.0",
+    "twine>=5.0.0",
+]
+
+[project.scripts]
+langfuse-firewall-replay = "langfuse_firewall_replay.cli:main"
+
+[project.urls]
+Homepage = "https://silmarilsecurity.com"
+Repository = "https://github.com/Silmaril-Security/langfuse-firewall-replay"
+Issues = "https://github.com/Silmaril-Security/langfuse-firewall-replay/issues"
+
+[tool.hatch.build]
+include = [
+    "src/langfuse_firewall_replay",
+    "README.md",
+    "LICENSE",
+    ".env.example",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/langfuse_firewall_replay"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+pythonpath = ["src"]

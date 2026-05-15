@@ -1,0 +1,25 @@
+SILMARIL LANGFUSE FIREWALL REPLAY SOURCE-AVAILABLE LICENSE
+
+Copyright (c) 2026 Silmaril Security Inc. All rights reserved.
+
+This software and its documentation are proprietary to Silmaril Security Inc.
+
+Subject to a valid agreement with Silmaril Security Inc., you may use, copy,
+and modify this tool solely to integrate your applications, observability
+exports, or evaluation workflows with Silmaril services.
+
+You may not:
+
+- redistribute, sublicense, sell, rent, lease, or otherwise provide this tool to
+  third parties;
+- use this tool to build, train, benchmark, or operate a competing product or
+  service;
+- remove or alter copyright, trademark, or proprietary notices;
+- reverse engineer hosted Silmaril services, models, systems, or APIs except to
+  the extent required by applicable law.
+
+No trademark rights are granted under this license.
+
+This software is provided "AS IS" without warranty of any kind, express or
+implied, including but not limited to the warranties of merchantability,
+fitness for a particular purpose, and noninfringement.
