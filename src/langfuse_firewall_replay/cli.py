@@ -21,16 +21,12 @@ DEFAULT_WORKERS = 1
 
 
 def resolve_api_url(args: argparse.Namespace, env: dict[str, str]) -> str | None:
-    tenant_key = f"SILMARIL_{args.tenant}_{args.stage}_API_URL".upper().replace("-", "_")
-    return args.api_url or env.get(tenant_key) or env.get("SILMARIL_API_URL")
+    return args.api_url or env.get("SILMARIL_API_URL")
 
 
 def resolve_api_url_source(args: argparse.Namespace, env: dict[str, str]) -> str | None:
-    tenant_key = f"SILMARIL_{args.tenant}_{args.stage}_API_URL".upper().replace("-", "_")
     if args.api_url:
         return "--api-url"
-    if env.get(tenant_key):
-        return tenant_key
     if env.get("SILMARIL_API_URL"):
         return "SILMARIL_API_URL"
     return None
@@ -104,11 +100,7 @@ def _validate_args(args: argparse.Namespace, api_key: str | None, api_url: str |
         if not api_key:
             raise SystemExit("SILMARIL_API_KEY is required unless --dry-run is set")
         if not api_url:
-            tenant_key = f"SILMARIL_{args.tenant}_{args.stage}_API_URL".upper().replace("-", "_")
-            raise SystemExit(
-                "Silmaril API URL is required. Use --api-url, "
-                f"{tenant_key}, or SILMARIL_API_URL."
-            )
+            raise SystemExit("Silmaril API URL is required. Use --api-url or SILMARIL_API_URL.")
 
 
 def main(argv: Sequence[str] | None = None) -> int:

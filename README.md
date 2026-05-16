@@ -7,8 +7,6 @@ The tool reads a local Langfuse export, extracts user inputs, model outputs, too
 calls, and tool responses, then calls `Firewall.classify(...)` once per extracted
 item. It writes local JSON reports for trace analysis.
 
-It does not write scores back to Langfuse.
-
 ## Requirements
 
 - Python 3.10 or newer
@@ -70,17 +68,10 @@ export SILMARIL_API_KEY="..."
 export SILMARIL_API_URL="https://<api-id>.execute-api.<region>.amazonaws.com/<stage>/classify"
 ```
 
-The API URL can also be tenant-specific:
-
-```bash
-export SILMARIL_ACME_PROD_API_URL="https://<api-id>.execute-api.us-west-2.amazonaws.com/prod/classify"
-```
-
 Resolution order:
 
 1. `--api-url`
-2. `SILMARIL_<TENANT>_<STAGE>_API_URL`
-3. `SILMARIL_API_URL`
+2. `SILMARIL_API_URL`
 
 ## Run A Replay
 
@@ -108,8 +99,7 @@ langfuse-firewall-replay \
   --include-preview
 ```
 
-The runner intentionally never calls `classify_batch`. Each replay item is sent
-through the Python SDK as:
+Each replay item is sent through the Python SDK as:
 
 ```python
 fw.classify(text, hook=hook, tool_name=tool_name, shadow_mode=True)

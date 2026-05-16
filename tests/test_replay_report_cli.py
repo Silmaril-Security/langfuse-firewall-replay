@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 
 from langfuse_firewall_replay import hooks
-from langfuse_firewall_replay.cli import main
+from langfuse_firewall_replay.cli import main, parse_args, resolve_api_url, resolve_api_url_source
 from langfuse_firewall_replay.models import ReplayItem
 from langfuse_firewall_replay.replay import replay_items
 from langfuse_firewall_replay.report import result_record, timestamped_run_dir, write_reports
@@ -55,6 +55,19 @@ def test_replay_uses_classify_only():
     assert results[0].prediction == "BENIGN"
     assert results[0].threshold == 0.5
     assert client.calls == [("hello", hooks.USER_INPUT, None)]
+
+
+def test_api_url_resolution_only_uses_generic_env_var():
+    args = parse_args(["--input", "observations.jsonl", "--tenant", "acme", "--stage", "prod"])
+    scoped_key = "_".join(["SILMARIL", "ACME", "PROD", "API_URL"])
+    env = {
+        scoped_key: "https://scoped.example/classify",
+        "SILMARIL_API_URL": "https://generic.example/classify",
+    }
+
+    assert resolve_api_url(args, env) == "https://generic.example/classify"
+    assert resolve_api_url_source(args, env) == "SILMARIL_API_URL"
+    assert resolve_api_url(args, {scoped_key: "https://ignored"}) is None
 
 
 def test_block_exceptions_are_serialized_as_malicious_results():
