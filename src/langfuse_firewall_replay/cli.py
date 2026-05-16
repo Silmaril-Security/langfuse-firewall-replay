@@ -11,7 +11,7 @@ from typing import Sequence
 
 from langfuse_firewall_replay.extractor import extract_observation
 from langfuse_firewall_replay.loader import ExportLoadError, discover_export_files, iter_export_file
-from langfuse_firewall_replay.replay import replay_iter
+from langfuse_firewall_replay.replay import DEFAULT_RETRIES, DEFAULT_RETRY_BACKOFF, replay_iter
 from langfuse_firewall_replay.report import timestamped_run_dir, write_reports
 
 DEFAULT_TENANT = "default"
@@ -49,6 +49,18 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS)
     parser.add_argument("--limit", type=int, help="Maximum replay items to classify")
     parser.add_argument("--timeout", type=float, default=30.0, help="SDK HTTP timeout in seconds")
+    parser.add_argument(
+        "--retries",
+        type=int,
+        default=DEFAULT_RETRIES,
+        help="Retries for transient classify failures",
+    )
+    parser.add_argument(
+        "--retry-backoff",
+        type=float,
+        default=DEFAULT_RETRY_BACKOFF,
+        help="Initial retry backoff in seconds; doubles after each retry",
+    )
     parser.add_argument("--include-text", action="store_true", help="Write full text to results.jsonl")
     parser.add_argument("--include-preview", action="store_true", help="Write short text previews")
     parser.add_argument(
@@ -84,6 +96,10 @@ def _validate_args(args: argparse.Namespace, api_key: str | None, api_url: str |
         raise SystemExit("--workers must be >= 1")
     if args.limit is not None and args.limit < 1:
         raise SystemExit("--limit must be >= 1")
+    if args.retries < 0:
+        raise SystemExit("--retries must be >= 0")
+    if args.retry_backoff < 0:
+        raise SystemExit("--retry-backoff must be >= 0")
     if not args.dry_run:
         if not api_key:
             raise SystemExit("SILMARIL_API_KEY is required unless --dry-run is set")
@@ -133,6 +149,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         workers=args.workers,
         dry_run=args.dry_run,
         timeout=args.timeout,
+        retries=args.retries,
+        retry_backoff=args.retry_backoff,
     )
     hash_identifiers = not args.plain_identifiers
     hash_salt = args.hash_salt or secrets.token_hex(16)
@@ -154,6 +172,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if args.include_source_paths
                 else None,
                 "workers": args.workers,
+                "retries": args.retries,
+                "retry_backoff": args.retry_backoff,
                 "limit": args.limit,
                 "dry_run": args.dry_run,
                 "include_text": args.include_text,

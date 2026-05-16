@@ -82,6 +82,45 @@ def test_extract_plain_generation_input():
     assert result.items[0].source_field == "input"
 
 
+def test_extract_langfuse_camel_case_metadata():
+    result = extract_observation(
+        _loaded(
+            {
+                "id": "obs-camel",
+                "traceId": "trace-camel",
+                "projectId": "project-camel",
+                "sessionId": "session-camel",
+                "userId": "user-camel",
+                "traceName": "camel trace",
+                "startTime": "2026-05-16T00:00:00Z",
+                "type": "GENERATION",
+                "name": "chat",
+                "input": "hello from camel case",
+                "toolCalls": [
+                    {
+                        "function": {
+                            "name": "lookup_vehicle",
+                            "arguments": {"vehicle_id": "VH-1"},
+                        }
+                    }
+                ],
+                "toolCallNames": ["lookup_vehicle"],
+            }
+        )
+    )
+
+    by_source = {item.source_field: item for item in result.items}
+    item = by_source["input"]
+    assert item.trace_id == "trace-camel"
+    assert item.project_id == "project-camel"
+    assert item.session_id == "session-camel"
+    assert item.user_id == "user-camel"
+    assert item.trace_name == "camel trace"
+    assert item.start_time == "2026-05-16T00:00:00Z"
+    assert item.item_id.startswith("trace-camel:obs-camel:")
+    assert by_source["tool_calls[0]"].tool_name == "lookup_vehicle"
+
+
 def test_extract_tool_span_input_and_output():
     result = extract_observation(
         _loaded(

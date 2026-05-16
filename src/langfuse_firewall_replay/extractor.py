@@ -15,7 +15,25 @@ SYSTEM_ROLES = {"system"}
 TOOL_ROLES = {"tool", "function"}
 ASSISTANT_ROLES = {"assistant", "ai"}
 TOOL_SPAN_HINTS = ("tool", "retriever", "retrieve", "search", "function")
-TOOL_NAME_KEYS = ("tool_name", "tool", "name", "function_name", "function")
+TOOL_NAME_KEYS = ("tool_name", "toolName", "tool", "name", "function_name", "functionName", "function")
+ROW_FIELD_ALIASES = {
+    "id": ("id", "observation_id", "observationId"),
+    "trace_id": ("trace_id", "traceId"),
+    "project_id": ("project_id", "projectId"),
+    "session_id": ("session_id", "sessionId"),
+    "user_id": ("user_id", "userId"),
+    "trace_name": ("trace_name", "traceName"),
+    "start_time": ("start_time", "startTime"),
+    "provided_model_name": ("provided_model_name", "providedModelName"),
+    "tool_calls": ("tool_calls", "toolCalls"),
+    "tool_call_names": ("tool_call_names", "toolCallNames"),
+    "type": ("type",),
+    "name": ("name",),
+    "input": ("input",),
+    "output": ("output",),
+    "environment": ("environment",),
+    "metadata": ("metadata",),
+}
 
 
 def parse_jsonish(value: Any) -> Any:
@@ -133,8 +151,16 @@ def sanitize_tool_name(value: Any) -> str | None:
 
 
 def _metadata(row: dict[str, Any]) -> dict[str, Any]:
-    metadata = parse_jsonish(row.get("metadata"))
+    metadata = parse_jsonish(_row_value(row, "metadata"))
     return metadata if isinstance(metadata, dict) else {}
+
+
+def _row_value(row: dict[str, Any], field: str) -> Any:
+    for key in ROW_FIELD_ALIASES.get(field, (field,)):
+        value = row.get(key)
+        if value is not None:
+            return value
+    return None
 
 
 def _tool_name_from_metadata(row: dict[str, Any]) -> str | None:
@@ -144,31 +170,37 @@ def _tool_name_from_metadata(row: dict[str, Any]) -> str | None:
             name = sanitize_tool_name(metadata[key])
             if name:
                 return name
-    return sanitize_tool_name(row.get("name"))
+    return sanitize_tool_name(_row_value(row, "name"))
 
 
 def _item_prefix(row: dict[str, Any], index: int) -> str:
     basis = "|".join(
-        str(row.get(key) or "")
-        for key in ("trace_id", "id", "name", "start_time", "source_path")
+        str(value or "")
+        for value in (
+            _row_value(row, "trace_id"),
+            _row_value(row, "id"),
+            _row_value(row, "name"),
+            _row_value(row, "start_time"),
+            row.get("source_path"),
+        )
     )
     digest = hashlib.sha1(basis.encode("utf-8")).hexdigest()[:10]
-    return f"{row.get('trace_id') or 'trace'}:{row.get('id') or digest}:{index}"
+    return f"{_row_value(row, 'trace_id') or 'trace'}:{_row_value(row, 'id') or digest}:{index}"
 
 
 def _base_item_kwargs(observation: LoadedObservation) -> dict[str, Any]:
     row = observation.row
     return {
-        "trace_id": _optional_str(row.get("trace_id")),
-        "observation_id": _optional_str(row.get("id")),
-        "observation_type": _optional_str(row.get("type")),
-        "observation_name": _optional_str(row.get("name")),
-        "project_id": _optional_str(row.get("project_id")),
-        "environment": _optional_str(row.get("environment")),
-        "session_id": _optional_str(row.get("session_id")),
-        "user_id": _optional_str(row.get("user_id")),
-        "trace_name": _optional_str(row.get("trace_name")),
-        "start_time": _optional_str(row.get("start_time")),
+        "trace_id": _optional_str(_row_value(row, "trace_id")),
+        "observation_id": _optional_str(_row_value(row, "id")),
+        "observation_type": _optional_str(_row_value(row, "type")),
+        "observation_name": _optional_str(_row_value(row, "name")),
+        "project_id": _optional_str(_row_value(row, "project_id")),
+        "environment": _optional_str(_row_value(row, "environment")),
+        "session_id": _optional_str(_row_value(row, "session_id")),
+        "user_id": _optional_str(_row_value(row, "user_id")),
+        "trace_name": _optional_str(_row_value(row, "trace_name")),
+        "start_time": _optional_str(_row_value(row, "start_time")),
         "source_path": observation.source_path,
         "source_line": observation.source_line,
     }
@@ -234,12 +266,12 @@ def _tool_calls(value: Any) -> list[Any]:
 
 
 def _is_generation(row: dict[str, Any]) -> bool:
-    obs_type = str(row.get("type") or "").upper()
-    return obs_type == "GENERATION" or bool(row.get("provided_model_name"))
+    obs_type = str(_row_value(row, "type") or "").upper()
+    return obs_type == "GENERATION" or bool(_row_value(row, "provided_model_name"))
 
 
 def _is_tool_span(row: dict[str, Any]) -> bool:
-    obs_type = str(row.get("type") or "").upper()
+    obs_type = str(_row_value(row, "type") or "").upper()
     if obs_type != "SPAN":
         return False
     metadata = _metadata(row)
@@ -250,7 +282,9 @@ def _is_tool_span(row: dict[str, Any]) -> bool:
             metadata.get("type"),
             metadata.get("kind"),
             metadata.get("span_kind"),
+            metadata.get("spanKind"),
             metadata.get("tool_name"),
+            metadata.get("toolName"),
         )
     )
     return any(hint in haystack for hint in TOOL_SPAN_HINTS)
@@ -284,7 +318,7 @@ def extract_observation(observation: LoadedObservation) -> ExtractionResult:
             items.append(item)
 
     if _is_generation(row):
-        messages = _messages_from_input(row.get("input"))
+        messages = _messages_from_input(_row_value(row, "input"))
         if messages is not None:
             last_user: tuple[int, str] | None = None
             for idx, message in enumerate(messages):
@@ -311,26 +345,26 @@ def extract_observation(observation: LoadedObservation) -> ExtractionResult:
                 idx, text = last_user
                 append_item(text, hooks.USER_INPUT, f"input.messages[{idx}]")
         else:
-            text = coerce_text(row.get("input"))
+            text = coerce_text(_row_value(row, "input"))
             if text:
                 append_item(text, hooks.USER_INPUT, "input")
 
-        output_text = coerce_text(row.get("output"))
+        output_text = coerce_text(_row_value(row, "output"))
         if output_text:
             append_item(output_text, hooks.LLM_OUTPUT, "output")
 
-        names = _tool_names(row.get("tool_call_names"))
-        for idx, call in enumerate(_tool_calls(row.get("tool_calls"))):
+        names = _tool_names(_row_value(row, "tool_call_names"))
+        for idx, call in enumerate(_tool_calls(_row_value(row, "tool_calls"))):
             text, embedded_name = _extract_tool_call_payload(call)
             tool_name = embedded_name or (names[idx] if idx < len(names) else None)
             append_item(text, hooks.TOOL_CALL, f"tool_calls[{idx}]", tool_name=tool_name)
 
     elif _is_tool_span(row):
         tool_name = _tool_name_from_metadata(row)
-        input_text = coerce_text(row.get("input"))
+        input_text = coerce_text(_row_value(row, "input"))
         if input_text:
             append_item(input_text, hooks.TOOL_CALL, "span.input", tool_name=tool_name)
-        output_text = coerce_text(row.get("output"))
+        output_text = coerce_text(_row_value(row, "output"))
         if output_text:
             append_item(output_text, hooks.TOOL_RESPONSE, "span.output", tool_name=tool_name)
 

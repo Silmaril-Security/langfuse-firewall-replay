@@ -104,6 +104,7 @@ langfuse-firewall-replay \
   --stage prod \
   --region us-west-2 \
   --workers 4 \
+  --retries 2 \
   --include-preview
 ```
 
@@ -214,6 +215,8 @@ jq . runs/replay/summary.json
 --region NAME             Region label written to summary.json. Default: us-west-2.
 --api-url URL             Silmaril classify endpoint.
 --workers N              Number of concurrent classify calls. Default: 1.
+--retries N              Retries for transient classify failures. Default: 2.
+--retry-backoff SECONDS  Initial retry backoff; doubles per retry. Default: 0.5.
 --limit N                Stop after N extracted replay items.
 --dry-run                Parse and write reports without API calls.
 --include-preview        Write a short text preview for each item.

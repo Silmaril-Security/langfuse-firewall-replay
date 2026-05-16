@@ -82,6 +82,42 @@ def test_dry_run_does_not_call_client():
     assert client.calls == []
 
 
+def test_replay_retries_transient_connection_errors():
+    class FlakyClient:
+        def __init__(self):
+            self.calls = 0
+
+        def classify(self, text, *, hook=None, tool_name=None, shadow_mode=None):
+            self.calls += 1
+            if self.calls < 3:
+                raise ConnectionError("temporary connection reset")
+            return FakeBlockResult(prediction="BENIGN", score=0.2)
+
+    client = FlakyClient()
+    [result] = replay_items([_item()], client=client, retries=2, retry_backoff=0)
+
+    assert client.calls == 3
+    assert result.prediction == "BENIGN"
+    assert result.error_class is None
+
+
+def test_replay_records_error_after_retry_exhaustion():
+    class DownClient:
+        def __init__(self):
+            self.calls = 0
+
+        def classify(self, text, *, hook=None, tool_name=None, shadow_mode=None):
+            self.calls += 1
+            raise ConnectionError("still down")
+
+    client = DownClient()
+    [result] = replay_items([_item()], client=client, retries=1, retry_backoff=0)
+
+    assert client.calls == 2
+    assert result.prediction is None
+    assert result.error_class == "ConnectionError"
+
+
 def test_result_record_omits_full_text_and_preview_by_default():
     result = replay_items([_item(text="secret route text")], client=FakeClient())[0]
 
@@ -180,3 +216,41 @@ def test_cli_dry_run_writes_reports(tmp_path, capsys):
     summary = json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))
     assert summary["config"]["api_url_configured"] is False
     assert summary["config"]["input"] is None
+
+
+def test_cli_preserves_camel_case_trace_metadata(tmp_path):
+    export_file = tmp_path / "observations.jsonl"
+    out_dir = tmp_path / "out"
+    export_file.write_text(
+        json.dumps(
+            {
+                "id": "obs-1",
+                "traceId": "trace-camel",
+                "traceName": "camel trace",
+                "sessionId": "session-camel",
+                "userId": "user-camel",
+                "type": "GENERATION",
+                "input": "hello",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    code = main(
+        [
+            "--input",
+            str(export_file),
+            "--out",
+            str(out_dir),
+            "--dry-run",
+            "--plain-identifiers",
+        ]
+    )
+
+    assert code == 0
+    trace_row = json.loads((out_dir / "trace_summary.jsonl").read_text(encoding="utf-8"))
+    assert trace_row["trace_id"] == "trace-camel"
+    assert trace_row["trace_name"] == "camel trace"
+    assert trace_row["session_id"] == "session-camel"
+    assert trace_row["user_id"] == "user-camel"
