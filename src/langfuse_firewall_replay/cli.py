@@ -14,9 +14,6 @@ from langfuse_firewall_replay.loader import ExportLoadError, discover_export_fil
 from langfuse_firewall_replay.replay import DEFAULT_RETRIES, DEFAULT_RETRY_BACKOFF, replay_iter
 from langfuse_firewall_replay.report import timestamped_run_dir, write_reports
 
-DEFAULT_TENANT = "default"
-DEFAULT_STAGE = "prod"
-DEFAULT_REGION = "us-west-2"
 DEFAULT_WORKERS = 1
 
 
@@ -38,9 +35,6 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--input", type=Path, required=True, help="Langfuse export file or directory")
     parser.add_argument("--out", type=Path, help="Output directory for report artifacts")
-    parser.add_argument("--tenant", default=DEFAULT_TENANT)
-    parser.add_argument("--stage", default=DEFAULT_STAGE)
-    parser.add_argument("--region", default=DEFAULT_REGION)
     parser.add_argument("--api-url", help="Silmaril /classify endpoint URL")
     parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS)
     parser.add_argument("--limit", type=int, help="Maximum replay items to classify")
@@ -58,7 +52,6 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Initial retry backoff in seconds; doubles after each retry",
     )
     parser.add_argument("--include-text", action="store_true", help="Write full text to results.jsonl")
-    parser.add_argument("--include-preview", action="store_true", help="Write short text previews")
     parser.add_argument(
         "--include-error-details",
         action="store_true",
@@ -153,9 +146,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             observation_count=lambda: int(stats["observations"]),
             skipped=lambda: dict(skipped),
             config={
-                "tenant": args.tenant,
-                "stage": args.stage,
-                "region": args.region,
                 "api_url_source": api_url_source,
                 "api_url_configured": bool(api_url),
                 "input": str(input_path) if args.include_source_paths else None,
@@ -169,13 +159,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "limit": args.limit,
                 "dry_run": args.dry_run,
                 "include_text": args.include_text,
-                "include_preview": args.include_preview,
                 "include_error_details": args.include_error_details,
                 "plain_identifiers": args.plain_identifiers,
                 "include_source_paths": args.include_source_paths,
             },
             include_text=args.include_text,
-            include_preview=args.include_preview,
             include_error_details=args.include_error_details,
             hash_identifiers=hash_identifiers,
             identifier_salt=hash_salt,

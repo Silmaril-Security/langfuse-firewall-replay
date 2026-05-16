@@ -81,8 +81,7 @@ First validate extraction without API calls:
 langfuse-firewall-replay \
   --input ./langfuse-export/observations_v2 \
   --out runs/dry-run \
-  --dry-run \
-  --include-preview
+  --dry-run
 ```
 
 Then run a live replay:
@@ -91,12 +90,8 @@ Then run a live replay:
 langfuse-firewall-replay \
   --input ./langfuse-export/observations_v2 \
   --out runs/replay \
-  --tenant acme \
-  --stage prod \
-  --region us-west-2 \
   --workers 4 \
-  --retries 2 \
-  --include-preview
+  --retries 2
 ```
 
 Each replay item is sent through the Python SDK as:
@@ -137,7 +132,6 @@ One row per classified replay item. Useful fields:
 - `error_class`
 - `text_hash`
 - `text_length`
-- `text_preview`, when `--include-preview` is set
 - `text`, when `--include-text` is set
 
 Show triggering items:
@@ -145,7 +139,7 @@ Show triggering items:
 ```bash
 jq -r '
   select(.prediction == "MALICIOUS") |
-  [.trace_id, .observation_id, .hook, (.tool_name // "-"), .score, (.text_preview // "")]
+  [.trace_id, .observation_id, .hook, (.tool_name // "-"), .score]
   | @tsv
 ' runs/replay/results.jsonl
 ```
@@ -200,16 +194,12 @@ jq . runs/replay/summary.json
 ```text
 --input PATH              Langfuse export file or directory.
 --out PATH                Output directory. Defaults to runs/<timestamp>.
---tenant NAME             Tenant label written to summary.json. Default: default.
---stage NAME              Stage label written to summary.json. Default: prod.
---region NAME             Region label written to summary.json. Default: us-west-2.
 --api-url URL             Silmaril classify endpoint.
 --workers N              Number of concurrent classify calls. Default: 1.
 --retries N              Retries for transient classify failures. Default: 2.
 --retry-backoff SECONDS  Initial retry backoff; doubles per retry. Default: 0.5.
 --limit N                Stop after N extracted replay items.
 --dry-run                Parse and write reports without API calls.
---include-preview        Write a short text preview for each item.
 --include-text           Write full replay text for each item.
 --plain-identifiers      Write raw trace, observation, session, and user ids.
 --hash-salt VALUE        Use stable hashes across runs.

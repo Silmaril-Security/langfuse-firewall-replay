@@ -58,7 +58,7 @@ def test_replay_uses_classify_only():
 
 
 def test_api_url_resolution_only_uses_generic_env_var():
-    args = parse_args(["--input", "observations.jsonl", "--tenant", "acme", "--stage", "prod"])
+    args = parse_args(["--input", "observations.jsonl"])
     scoped_key = "_".join(["SILMARIL", "ACME", "PROD", "API_URL"])
     env = {
         scoped_key: "https://scoped.example/classify",
